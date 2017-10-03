@@ -407,7 +407,7 @@ func TestRouterPanicHandler(t *testing.T) {
 	router := New()
 	panicHandled := false
 
-	router.PanicHandler = func(rw http.ResponseWriter, r *http.Request, p interface{}) {
+	router.PanicHandler = func(rw http.ResponseWriter, r *http.Request) {
 		panicHandled = true
 	}
 
