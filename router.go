@@ -10,16 +10,17 @@
 //
 //  import (
 //      "fmt"
-//      "github.com/julienschmidt/httprouter"
+//      "github.com/donutloop/httprouter"
 //      "net/http"
 //      "log"
 //  )
 //
-//  func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+//  func Index(w http.ResponseWriter, r *http.Request) {
 //      fmt.Fprint(w, "Welcome!\n")
 //  }
 //
-//  func Hello(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+//  func Hello(w http.ResponseWriter, r *http.Request) {
+//		ps := httprouter.CtxParams(r.Context())
 //      fmt.Fprintf(w, "hello, %s!\n", ps.ByName("name"))
 //  }
 //
@@ -77,13 +78,9 @@
 package httprouter
 
 import (
+	"context"
 	"net/http"
 )
-
-// Handle is a function that can be registered to a route to handle HTTP
-// requests. Like http.HandlerFunc, but has a third parameter for the values of
-// wildcards (variables).
-type Handle func(http.ResponseWriter, *http.Request, Params)
 
 // Param is a single URL parameter, consisting of a key and a value.
 type Param struct {
@@ -158,7 +155,7 @@ type Router struct {
 	// 500 (Internal Server Error).
 	// The handler can be used to keep your server from crashing because of
 	// unrecovered panics.
-	PanicHandler func(http.ResponseWriter, *http.Request, interface{})
+	PanicHandler func(http.ResponseWriter, *http.Request)
 }
 
 // Make sure the Router conforms with the http.Handler interface
@@ -175,39 +172,40 @@ func New() *Router {
 	}
 }
 
+
 // GET is a shortcut for router.Handle("GET", path, handle)
-func (r *Router) GET(path string, handle Handle) {
-	r.Handle("GET", path, handle)
+func (r *Router) GET(path string, handlerFunc http.HandlerFunc) {
+	r.HandlerFunc(http.MethodGet, path, handlerFunc)
 }
 
 // HEAD is a shortcut for router.Handle("HEAD", path, handle)
-func (r *Router) HEAD(path string, handle Handle) {
-	r.Handle("HEAD", path, handle)
+func (r *Router) HEAD(path string, handlerFunc http.HandlerFunc) {
+	r.HandlerFunc(http.MethodHead, path, handlerFunc)
 }
 
 // OPTIONS is a shortcut for router.Handle("OPTIONS", path, handle)
-func (r *Router) OPTIONS(path string, handle Handle) {
-	r.Handle("OPTIONS", path, handle)
+func (r *Router) OPTIONS(path string, handlerFunc http.HandlerFunc) {
+	r.HandlerFunc(http.MethodOptions, path, handlerFunc)
 }
 
 // POST is a shortcut for router.Handle("POST", path, handle)
-func (r *Router) POST(path string, handle Handle) {
-	r.Handle("POST", path, handle)
+func (r *Router) POST(path string, handlerFunc http.HandlerFunc) {
+	r.HandlerFunc(http.MethodPost, path, handlerFunc)
 }
 
 // PUT is a shortcut for router.Handle("PUT", path, handle)
-func (r *Router) PUT(path string, handle Handle) {
-	r.Handle("PUT", path, handle)
+func (r *Router) PUT(path string, handlerFunc http.HandlerFunc) {
+	r.HandlerFunc(http.MethodPut, path, handlerFunc)
 }
 
 // PATCH is a shortcut for router.Handle("PATCH", path, handle)
-func (r *Router) PATCH(path string, handle Handle) {
-	r.Handle("PATCH", path, handle)
+func (r *Router) PATCH(path string, handlerFunc http.HandlerFunc) {
+	r.HandlerFunc(http.MethodPatch, path, handlerFunc)
 }
 
 // DELETE is a shortcut for router.Handle("DELETE", path, handle)
-func (r *Router) DELETE(path string, handle Handle) {
-	r.Handle("DELETE", path, handle)
+func (r *Router) DELETE(path string, handlerFunc http.HandlerFunc) {
+	r.HandlerFunc(http.MethodDelete, path, handlerFunc)
 }
 
 // Handle registers a new request handle with the given path and method.
@@ -218,7 +216,11 @@ func (r *Router) DELETE(path string, handle Handle) {
 // This function is intended for bulk loading and to allow the usage of less
 // frequently used, non-standardized or custom methods (e.g. for internal
 // communication with a proxy).
-func (r *Router) Handle(method, path string, handle Handle) {
+func (r *Router) HandlerFunc(method, path string, handle http.HandlerFunc) {
+	r.Handler(method, path, handle)
+}
+
+func (r *Router) Handler(method, path string, handle http.Handler) {
 	if path[0] != '/' {
 		panic("path must begin with '/' in path '" + path + "'")
 	}
@@ -234,22 +236,6 @@ func (r *Router) Handle(method, path string, handle Handle) {
 	}
 
 	root.addRoute(path, handle)
-}
-
-// Handler is an adapter which allows the usage of an http.Handler as a
-// request handle.
-func (r *Router) Handler(method, path string, handler http.Handler) {
-	r.Handle(method, path,
-		func(w http.ResponseWriter, req *http.Request, _ Params) {
-			handler.ServeHTTP(w, req)
-		},
-	)
-}
-
-// HandlerFunc is an adapter which allows the usage of an http.HandlerFunc as a
-// request handle.
-func (r *Router) HandlerFunc(method, path string, handler http.HandlerFunc) {
-	r.Handler(method, path, handler)
 }
 
 // ServeFiles serves files from the given file system root.
@@ -269,7 +255,8 @@ func (r *Router) ServeFiles(path string, root http.FileSystem) {
 
 	fileServer := http.FileServer(root)
 
-	r.GET(path, func(w http.ResponseWriter, req *http.Request, ps Params) {
+	r.GET(path, func(w http.ResponseWriter, req *http.Request) {
+		ps := CtxParams(req.Context())
 		req.URL.Path = ps.ByName("filepath")
 		fileServer.ServeHTTP(w, req)
 	})
@@ -277,7 +264,7 @@ func (r *Router) ServeFiles(path string, root http.FileSystem) {
 
 func (r *Router) recv(w http.ResponseWriter, req *http.Request) {
 	if rcv := recover(); rcv != nil {
-		r.PanicHandler(w, req, rcv)
+		r.PanicHandler(w, req)
 	}
 }
 
@@ -286,7 +273,7 @@ func (r *Router) recv(w http.ResponseWriter, req *http.Request) {
 // If the path was found, it returns the handle function and the path parameter
 // values. Otherwise the third return value indicates whether a redirection to
 // the same path with an extra / without the trailing slash should be performed.
-func (r *Router) Lookup(method, path string) (Handle, Params, bool) {
+func (r *Router) Lookup(method, path string) (http.Handler, Params, bool) {
 	if root := r.trees[method]; root != nil {
 		return root.getValue(path)
 	}
@@ -296,7 +283,7 @@ func (r *Router) Lookup(method, path string) (Handle, Params, bool) {
 func (r *Router) allowed(path, reqMethod string) (allow string) {
 	if path == "*" { // server-wide
 		for method := range r.trees {
-			if method == "OPTIONS" {
+			if method == http.MethodOptions {
 				continue
 			}
 
@@ -310,7 +297,7 @@ func (r *Router) allowed(path, reqMethod string) (allow string) {
 	} else { // specific path
 		for method := range r.trees {
 			// Skip the requested method - we already tried this one
-			if method == reqMethod || method == "OPTIONS" {
+			if method == reqMethod || method == http.MethodOptions {
 				continue
 			}
 
@@ -340,12 +327,13 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 
 	if root := r.trees[req.Method]; root != nil {
-		if handle, ps, tsr := root.getValue(path); handle != nil {
-			handle(w, req, ps)
+		if handler, ps, tsr := root.getValue(path); handler != nil {
+			req = withParam(req, ps)
+			handler.ServeHTTP(w, req)
 			return
-		} else if req.Method != "CONNECT" && path != "/" {
+		} else if req.Method != http.MethodConnect && path != "/" {
 			code := 301 // Permanent redirect, request with GET method
-			if req.Method != "GET" {
+			if req.Method != http.MethodGet {
 				// Temporary redirect, request with same method
 				// As of Go 1.3, Go does not support status code 308.
 				code = 307
@@ -376,7 +364,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	if req.Method == "OPTIONS" {
+	if req.Method == http.MethodOptions {
 		// Handle OPTIONS requests
 		if r.HandleOPTIONS {
 			if allow := r.allowed(path, req.Method); len(allow) > 0 {
@@ -408,4 +396,27 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	} else {
 		http.NotFound(w, req)
 	}
+}
+
+type contextRequestKey int
+
+const (
+	paramKey contextRequestKey = 1
+)
+
+func withParam(req *http.Request, p Params) *http.Request {
+	return req.WithContext(context.WithValue(req.Context(), paramKey, p))
+}
+
+func CtxParams(ctx context.Context) Params {
+	paramsRaw := ctx.Value(paramKey)
+	params, ok := paramsRaw.(Params)
+	if !ok {
+		return make(Params, 0)
+	}
+
+	if params == nil {
+		return make(Params, 0)
+	}
+	return params
 }

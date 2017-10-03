@@ -49,7 +49,8 @@ func TestRouter(t *testing.T) {
 	router := New()
 
 	routed := false
-	router.Handle("GET", "/user/:name", func(w http.ResponseWriter, r *http.Request, ps Params) {
+	router.HandlerFunc("GET", "/user/:name", func(w http.ResponseWriter, r *http.Request) {
+		ps := CtxParams(r.Context())
 		routed = true
 		want := Params{Param{"name", "gopher"}}
 		if !reflect.DeepEqual(ps, want) {
@@ -76,35 +77,29 @@ func (h handlerStruct) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestRouterAPI(t *testing.T) {
-	var get, head, options, post, put, patch, delete, handler, handlerFunc bool
-
-	httpHandler := handlerStruct{&handler}
+	var get, head, options, post, put, patch, delete bool
 
 	router := New()
-	router.GET("/GET", func(w http.ResponseWriter, r *http.Request, _ Params) {
+	router.GET("/GET", func(w http.ResponseWriter, r *http.Request) {
 		get = true
 	})
-	router.HEAD("/GET", func(w http.ResponseWriter, r *http.Request, _ Params) {
+	router.HEAD("/GET", func(w http.ResponseWriter, r *http.Request) {
 		head = true
 	})
-	router.OPTIONS("/GET", func(w http.ResponseWriter, r *http.Request, _ Params) {
+	router.OPTIONS("/GET", func(w http.ResponseWriter, r *http.Request) {
 		options = true
 	})
-	router.POST("/POST", func(w http.ResponseWriter, r *http.Request, _ Params) {
+	router.POST("/POST", func(w http.ResponseWriter, r *http.Request) {
 		post = true
 	})
-	router.PUT("/PUT", func(w http.ResponseWriter, r *http.Request, _ Params) {
+	router.PUT("/PUT", func(w http.ResponseWriter, r *http.Request) {
 		put = true
 	})
-	router.PATCH("/PATCH", func(w http.ResponseWriter, r *http.Request, _ Params) {
+	router.PATCH("/PATCH", func(w http.ResponseWriter, r *http.Request) {
 		patch = true
 	})
-	router.DELETE("/DELETE", func(w http.ResponseWriter, r *http.Request, _ Params) {
+	router.DELETE("/DELETE", func(w http.ResponseWriter, r *http.Request) {
 		delete = true
-	})
-	router.Handler("GET", "/Handler", httpHandler)
-	router.HandlerFunc("GET", "/HandlerFunc", func(w http.ResponseWriter, r *http.Request) {
-		handlerFunc = true
 	})
 
 	w := new(mockResponseWriter)
@@ -150,18 +145,6 @@ func TestRouterAPI(t *testing.T) {
 	if !delete {
 		t.Error("routing DELETE failed")
 	}
-
-	r, _ = http.NewRequest("GET", "/Handler", nil)
-	router.ServeHTTP(w, r)
-	if !handler {
-		t.Error("routing Handler failed")
-	}
-
-	r, _ = http.NewRequest("GET", "/HandlerFunc", nil)
-	router.ServeHTTP(w, r)
-	if !handlerFunc {
-		t.Error("routing HandlerFunc failed")
-	}
 }
 
 func TestRouterRoot(t *testing.T) {
@@ -180,13 +163,13 @@ func TestRouterChaining(t *testing.T) {
 	router1.NotFound = router2
 
 	fooHit := false
-	router1.POST("/foo", func(w http.ResponseWriter, req *http.Request, _ Params) {
+	router1.POST("/foo", func(w http.ResponseWriter, req *http.Request) {
 		fooHit = true
 		w.WriteHeader(http.StatusOK)
 	})
 
 	barHit := false
-	router2.POST("/bar", func(w http.ResponseWriter, req *http.Request, _ Params) {
+	router2.POST("/bar", func(w http.ResponseWriter, req *http.Request) {
 		barHit = true
 		w.WriteHeader(http.StatusOK)
 	})
@@ -217,7 +200,7 @@ func TestRouterChaining(t *testing.T) {
 }
 
 func TestRouterOPTIONS(t *testing.T) {
-	handlerFunc := func(_ http.ResponseWriter, _ *http.Request, _ Params) {}
+	handlerFunc := func(_ http.ResponseWriter, _ *http.Request) {}
 
 	router := New()
 	router.POST("/path", handlerFunc)
@@ -276,7 +259,7 @@ func TestRouterOPTIONS(t *testing.T) {
 
 	// custom handler
 	var custom bool
-	router.OPTIONS("/path", func(w http.ResponseWriter, r *http.Request, _ Params) {
+	router.OPTIONS("/path", func(w http.ResponseWriter, r *http.Request) {
 		custom = true
 	})
 
@@ -307,7 +290,7 @@ func TestRouterOPTIONS(t *testing.T) {
 }
 
 func TestRouterNotAllowed(t *testing.T) {
-	handlerFunc := func(_ http.ResponseWriter, _ *http.Request, _ Params) {}
+	handlerFunc := func(_ http.ResponseWriter, _ *http.Request) {}
 
 	router := New()
 	router.POST("/path", handlerFunc)
@@ -356,7 +339,7 @@ func TestRouterNotAllowed(t *testing.T) {
 }
 
 func TestRouterNotFound(t *testing.T) {
-	handlerFunc := func(_ http.ResponseWriter, _ *http.Request, _ Params) {}
+	handlerFunc := func(_ http.ResponseWriter, _ *http.Request) {}
 
 	router := New()
 	router.GET("/path", handlerFunc)
@@ -428,7 +411,7 @@ func TestRouterPanicHandler(t *testing.T) {
 		panicHandled = true
 	}
 
-	router.Handle("PUT", "/user/:name", func(_ http.ResponseWriter, _ *http.Request, _ Params) {
+	router.HandlerFunc("PUT", "/user/:name", func(_ http.ResponseWriter, _ *http.Request) {
 		panic("oops!")
 	})
 
@@ -450,7 +433,7 @@ func TestRouterPanicHandler(t *testing.T) {
 
 func TestRouterLookup(t *testing.T) {
 	routed := false
-	wantHandle := func(_ http.ResponseWriter, _ *http.Request, _ Params) {
+	wantHandle := func(_ http.ResponseWriter, _ *http.Request) {
 		routed = true
 	}
 	wantParams := Params{Param{"name", "gopher"}}
@@ -473,7 +456,7 @@ func TestRouterLookup(t *testing.T) {
 	if handle == nil {
 		t.Fatal("Got no handle!")
 	} else {
-		handle(nil, nil, nil)
+		handle.ServeHTTP(nil, nil)
 		if !routed {
 			t.Fatal("Routing failed!")
 		}
