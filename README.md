@@ -1,6 +1,6 @@
 # It's a fork of julien schmidts "httprouter"
 
-# HttpRouter [![Build Status](https://travis-ci.org/donutloop/httprouter.svg?branch=master)](https://travis-ci.org/donutloop/httprouter) [![Coverage Status](https://coveralls.io/repos/github/donutloop/httprouter/badge.svg?branch=master)](https://coveralls.io/github/donutloop/httprouter?branch=master) [![GoDoc](https://godoc.org/github.com/donutloop/httprouter?status.svg)](http://godoc.org/github.com/donutloop/httprouter)
+# HttpRouter [![Build Status](https://travis-ci.org/donutloop/httprouter.svg?branch=master)](https://travis-ci.org/donutloop/httprouter) [![Coverage Status](https://coveralls.io/repos/github/donutloop/httprouter/badge.svg?branch=master)](https://coveralls.io/github/donutloop/httprouter?branch=master) 
 
 HttpRouter is a lightweight high performance HTTP request router (also called *multiplexer* or just *mux* for short) for [Go](https://golang.org/).
 
