@@ -141,7 +141,7 @@ type Router struct {
 
 	// If provided, this function is called before setting the 'Allow'
 	// headers. It is useful for setting things like Access-Control headers.
-	HandleOPTIONSHook func(http.ResponseWriter, *http.Request) 
+	HandleOPTIONSHook func(http.ResponseWriter, *http.Request, *string)
 
 	// Configurable http.Handler which is called when no matching route is
 	// found. If it is not set, http.NotFound is used.
@@ -175,7 +175,6 @@ func New() *Router {
 		HandleOPTIONS:          true,
 	}
 }
-
 
 // GET is a shortcut for router.Handle("GET", path, handle)
 func (r *Router) GET(path string, handlerFunc http.HandlerFunc) {
@@ -371,10 +370,12 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method == http.MethodOptions {
 		// Handle OPTIONS requests
 		if r.HandleOPTIONS {
+			allow := r.allowed(path, req.Method)
 			if r.HandleOPTIONSHook != nil {
-				r.HandleOPTIONSHook(w, req)
+				r.HandleOPTIONSHook(w, req, &allow)
 			}
-			if allow := r.allowed(path, req.Method); len(allow) > 0 {
+			// legacy behavior retained; this could go in the hook if desired
+			if len(allow) > 0 {
 				w.Header().Set("Allow", allow)
 				return
 			}
